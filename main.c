@@ -16,6 +16,8 @@
 #define CSS_HEADER "HTTP/1.1 200 OK\r\nContent-Type: text/css\r\nConnection: close\r\n\r\n"
 #define JS_HEADER "HTTP/1.1 200 OK\r\nContent-Type: text/javascript\r\nConnection: close\r\n\r\n"
 
+#define DEBUG 0
+
 char *readHTMLFile(const char *filename);
 char *buildResponse(const char *filename, const char *header);
 
@@ -89,8 +91,10 @@ int main(void){
         memset(recvbuf, 0, recvbuflen);
         iResult = recv(ClientSocket, recvbuf, recvbuflen, 0);
         if(iResult > 0){
-            printf("Received request:\n%.*s\n", iResult, recvbuf);
-
+            #if DEBUG
+                printf("Bytes received: %d\n", iResult);
+                printf("Received request:\n%.*s\n", iResult, recvbuf);
+            #endif
             char *response = NULL;
 
             if(strstr(recvbuf, "GET /style.css")){
