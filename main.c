@@ -1,5 +1,6 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
+#include <stddef.h>
 #endif
 
 #include <stdio.h>
@@ -8,6 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 
 #define PORT "8080"
 #define DEFAULT_BUFLEN 2048
@@ -18,8 +20,10 @@
 
 #define DEBUG 0
 
-char *readHTMLFile(const char *filename);
+char *readFile(const char *filename);
 char *buildResponse(const char *filename, const char *header);
+const char *getContentType(const char *filename);
+bool endsWith(const char *end, const char *filename);
 
 int main(void){
     WSADATA wsaData;
@@ -95,23 +99,30 @@ int main(void){
                 printf("Bytes received: %d\n", iResult);
                 printf("Received request:\n%.*s\n", iResult, recvbuf);
             #endif
-            char *response = NULL;
+                char method[8];
+                char path[256];
+                sscanf(recvbuf, "%7s %255s", method, path);
 
-            if(strstr(recvbuf, "GET /style.css")){
-                response = buildResponse("style.css", CSS_HEADER);
-            }
-            else if(strstr(recvbuf, "GET /index.js")){
-                response = buildResponse("index.js", JS_HEADER);
-            }
-            
-            else{
-                response = buildResponse("index.html", HTML_HEADER);
-            }
+                if(strcmp(path, "/") == 0){
+                    strcpy(path, "/index.html");
+                }
 
+                const char *header = getContentType(path);
+                if(header == NULL){
+                    printf("Error making header,\n");
+                    shutdown(ClientSocket, SD_SEND);
+                    closesocket(ClientSocket);
+                    closesocket(ListenSocket);
+                    WSACleanup();
+                }
+
+            char *response = buildResponse(path + 1, header); // + 1 because path is /file.ext, so path + 1 becomes file.ext
+                                                              
             if(response == NULL){
                 response = buildResponse("404.html", HTML_HEADER);
             }
 
+            
             send(ClientSocket, response, (int)strlen(response), 0);
 
             free(response);
@@ -125,7 +136,7 @@ int main(void){
     return 0;
 }
 
-char *readHTMLFile(const char *filename){
+char *readFile(const char *filename){
     FILE *f = fopen(filename, "r");
     if(!f){
         printf("Failed to open html file.");
@@ -152,15 +163,15 @@ char *readHTMLFile(const char *filename){
 }
 
 char *buildResponse(const char *filename, const char *header){
-    char *file = readHTMLFile(filename);
+    char *file = readFile(filename);
 
     if(file == NULL){
         printf("Failed to open file: %s.\n", filename);
         return NULL;
     }
 
-    int header_len = strlen(header);
-    int file_len = strlen(file);
+    size_t header_len = strlen(header);
+    size_t file_len = strlen(file);
     char *response = malloc(header_len + file_len + 1);
     
     memcpy(response, header, header_len);
@@ -171,4 +182,34 @@ char *buildResponse(const char *filename, const char *header){
     free(file);
 
     return response;
+}
+
+bool endsWith(const char *end, const char *filename){
+    if(!end || !filename){
+        return false;
+    }
+
+    size_t filename_len = strlen(filename);
+    size_t end_len = strlen(end);
+
+    if(end_len >= filename_len){
+        return false;
+    }
+
+    return strncmp(filename + filename_len - end_len, end, end_len) == 0;
+}
+
+const char *getContentType(const char *filename){
+    if(endsWith(".html", filename)){
+        return HTML_HEADER;
+    }
+    else if(endsWith(".js", filename)){
+        return JS_HEADER;
+    }
+    else if(endsWith(".css", filename)){
+        return CSS_HEADER;
+    }
+    else{
+        return NULL;
+    }
 }
